@@ -1,4 +1,4 @@
-static char help[] = "Calculate the smallest eigenvalue and corresponding eigenvector of the matrix.\n\n";
+static char help[] = "Solve the one-dimensional heat flux problem.\n\n";
 
 /*
   Include "petscksp.h" so that we can use KSP solvers.  Note that this file
@@ -7,30 +7,44 @@ static char help[] = "Calculate the smallest eigenvalue and corresponding eigenv
      petscmat.h - matrices
      petscis.h     - index sets            petscksp.h - Krylov subspace methods
      petscviewer.h - viewers               petscpc.h  - preconditioners
-
-  Note:  The corresponding uniprocessor example is ex1.c
 */
 #include <petscksp.h>
 
 int main(int argc,char **args)
 {
-  Vec            y, z, z_new;
+  Vec            u,u_next,f;       /* vector u for temperature, vector f for the force (sine function) */
   Mat            A;                /* linear system matrix */
   KSP            ksp;              /* linear solver context */
   PC             pc;               /* preconditioner context */
-  PetscReal      y_norm,y_norm_new,error,tol=1000.*PETSC_MACHINE_EPSILON;  /* norm of vec y */
+  PetscReal      norm,tol=1000.*PETSC_MACHINE_EPSILON;  /* norm of vector u */
   PetscErrorCode ierr;
-  PetscInt       i,n = 10,col[3],rstart,rend,nlocal,its;
-  PetscScalar    zero = 0.0,one = 1.0,value[3],lambda;
+  PetscInt       i,n = 99,col[3],rstart,rend,nlocal,its;	/* n is the length of vector u, 99 in this case*/
+  PetscScalar    zero = 0.0,one = 1.0,value[3],c=1.0,rho=1.0,dt=0.00001,l,lambda,diag;
+		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
-  ierr = PetscOptionsGetInt(NULL,NULL,"-n",&n,NULL);CHKERRQ(ierr);
+  /* Get the value of c, rho, dt, l for particular options */
+  ierr = PetscOptionsGetReal(NULL,NULL,"-c",&c,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-rho",&rho,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-l",&l,NULL);CHKERRQ(ierr);
 
+  lambda = rho * c / dt;
+//if explicit
+  diag = 20000. - lambda;
+//if implicit
+  diag = 20000. + lambda;	/* diag is the diagonal element of matrix A */
+//if explicit, check lambda,assertion
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-         Inverse power iteration for a matrix A to calculate the smallest
-	 eigenvalue and the corresponding eigenvector of matrix A
-	 A * y = z
-	 z_new = y/y_norm
+         To get the temperature vector at time t, there are two methods.
+
+	 One is explicit Euler method, which is conditionally stable.
+	 The selection of dt should be checked.
+	 u_next = -1 / lambda * A * u + 1 / lambda * f
+
+	 The other method is implicit Euler method, which is
+	 unconditionally stable. dt can be unchecked.
+	 A * u_next = lambda * u + f
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   /*
      Create vectors.  Note that we form 1 vector from scratch and
@@ -38,17 +52,17 @@ int main(int argc,char **args)
      many elements of the vector are stored on each processor. The second
      argument to VecSetSizes() below causes PETSc to decide.
   */
-  ierr = VecCreate(PETSC_COMM_WORLD,&z);CHKERRQ(ierr);
-  ierr = VecSetSizes(z,PETSC_DECIDE,n);CHKERRQ(ierr);
-  ierr = VecSetFromOptions(z);CHKERRQ(ierr);
-  ierr = VecDuplicate(z,&z_new);CHKERRQ(ierr);
-  ierr = VecDuplicate(z,&y);CHKERRQ(ierr);
+  ierr = VecCreate(PETSC_COMM_WORLD,&u);CHKERRQ(ierr);
+  ierr = VecSetSizes(u,PETSC_DECIDE,n);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(u);CHKERRQ(ierr);
+  ierr = VecDuplicate(u,&f);CHKERRQ(ierr);
+  ierr = VecDuplicate(u,&u_next);CHKERRQ(ierr);
 
   /* Identify the starting and ending mesh points on each
      processor for the interior part of the mesh. We let PETSc decide
      above. */
-  ierr = VecGetOwnershipRange(z,&rstart,&rend);CHKERRQ(ierr);
-  ierr = VecGetLocalSize(z,&nlocal);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(u,&rstart,&rend);CHKERRQ(ierr);
+  ierr = VecGetLocalSize(u,&nlocal);CHKERRQ(ierr);
 
   /*
      Create matrix.  When using MatCreate(), the matrix format can
@@ -78,19 +92,19 @@ int main(int argc,char **args)
   if (!rstart) 
   {
     rstart = 1;
-    i      = 0; col[0] = 0; col[1] = 1; value[0] = 2.0; value[1] = -1.0;
+    i      = 0; col[0] = 0; col[1] = 1; value[0] = diag; value[1] = -10000.0;
     ierr   = MatSetValues(A,1,&i,2,col,value,INSERT_VALUES);CHKERRQ(ierr);
   }
   
   if (rend == n) 
   {
     rend = n-1;
-    i    = n-1; col[0] = n-2; col[1] = n-1; value[0] = -1.0; value[1] = 2.0;
+    i    = n-1; col[0] = n-2; col[1] = n-1; value[0] = -10000.0; value[1] = diag;
     ierr = MatSetValues(A,1,&i,2,col,value,INSERT_VALUES);CHKERRQ(ierr);
   }
 
   /* Set entries corresponding to the mesh interior */
-  value[0] = -1.0; value[1] = 2.0; value[2] = -1.0;
+  value[0] = -10000.0; value[1] = diag; value[2] = -10000.0;
   for (i=rstart; i<rend; i++) 
   {
     col[0] = i-1; col[1] = i; col[2] = i+1;
@@ -103,18 +117,23 @@ int main(int argc,char **args)
 
   //ierr = MatView(A,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
-  /*
-     Set z0
-  */
-  ierr = VecSet(z,zero);CHKERRQ(ierr);
-  i = 0;
-  ierr = VecSetValues(z,1,&i,&one,INSERT_VALUES);CHKERRQ(ierr);
-  ierr = VecAssemblyBegin(z);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(z);CHKERRQ(ierr);
+  /* Initialize u to be zero vector */
+  ierr = VecSet(u,zero);CHKERRQ(ierr);
+  
+  /* Assemble the vector f */
+  for (i=rstart; i<rend;i++)
+  {
+    value[0] = sin(0.01*l*3.1415926*(i+1));
+    ierr = VecSetValues(f,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecAssemblyBegin(f);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(f);CHKERRQ(ierr);
 
-  //ierr = VecView(u,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  //ierr = VecView(f,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+ 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                Create the linear solver and set various options
+	If implicit Euler method is used       
+	Create the linear solver and set various options
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   /*
      Create linear solver context
@@ -150,7 +169,7 @@ int main(int argc,char **args)
   ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                      Inverse power iteration
+                     Iteration on vector u
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   its=0;y_norm=0.0;
   do{
