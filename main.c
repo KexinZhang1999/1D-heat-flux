@@ -171,31 +171,41 @@ int main(int argc,char **args)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                      Iteration on vector u
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  its=0;y_norm=0.0;
+//if implicit
+  its=0;
   do{
   its+=1;
-  /*
-     Solve linear system
-   */
-  ierr = KSPSolve(ksp,z,y);CHKERRQ(ierr);  
+  /* Solve linear system A * u_next = lambda * u + f */
+  ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);		// u = f + lambda * u
+  ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);		// A * u_next = u  
 
-  ierr = VecNorm(y,NORM_2,&y_norm_new);CHKERRQ(ierr);
+  ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
+  ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the norm of (u - u_next)
 
-  ierr = VecAXPBY(z_new,one/y_norm_new,zero,y);CHKERRQ(ierr);
+  //write to HDF5 every 10 iterations
 
-  error = PetscAbsReal(y_norm - y_norm_new);
+  ierr = VecCopy(u_next,u);CHKERRQ(ierr);		// copy u_next to u, go to next time step
 
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"Error of y_norm %g, Iterations %D\n",(double)error,its);CHKERRQ(ierr);
+  }while(norm > tol && its < 100000000);
 
-  ierr = VecCopy(z_new,z);CHKERRQ(ierr);
-  y_norm = y_norm_new;
+// if explicit
+  its=0;
+  /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
+  ierr = MatScale(A,-1.0/lambda);CHKERRQ(ierr);		// A = -1.0/lambda * A
+  ierr = VecScale(f,1.0/lambda);CHKERRQ(ierr);		// f = 1/lambda * f
+  /* The algorithm becomes u_next = A * u + f */
+  do{
+  its+=1;
+  ierr = MatMultAdd(A,u,f,u_next);CHKERRQ(ierr);	// u_next = A * u + f
 
-  }while(error > tol && its < 10000);
+  ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
+  ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the norm of (u - u_next)
 
-  ierr = VecDot(y,z,&lambda);CHKERRQ(ierr);	//the inverse of the smallest eigenvalue of A
-  lambda = one/lambda;				//the smallest eigenvalue of A
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"lambda = %g\n",(double)lambda);CHKERRQ(ierr);
-  //ierr = VecView(z,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  //write to HDF5 every 10 iterations
+ 
+  ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+ 
+  }while(norm > tol && its < 100000000);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Check solution and clean up
@@ -214,9 +224,9 @@ int main(int argc,char **args)
      Free work space.  All PETSc objects should be destroyed when they
      are no longer needed.
   */
-  ierr = VecDestroy(&z);CHKERRQ(ierr); ierr = VecDestroy(&z_new);CHKERRQ(ierr);
-  ierr = VecDestroy(&y);CHKERRQ(ierr); ierr = MatDestroy(&A);CHKERRQ(ierr);
- // ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
+  ierr = VecDestroy(&u);CHKERRQ(ierr); ierr = VecDestroy(&u_next);CHKERRQ(ierr);
+  ierr = VecDestroy(&f);CHKERRQ(ierr); ierr = MatDestroy(&A);CHKERRQ(ierr);
+  ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
 
   /*
      Always call PetscFinalize() before exiting a program.  This routine
