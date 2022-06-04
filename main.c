@@ -10,6 +10,8 @@ static char help[] = "Solve the one-dimensional heat flux problem.\n\n";
 */
 #include <petscksp.h>
 #include <assert.h>
+#include <hdf5.h>
+#define FILE "result.h5"
 
 int main(int argc,char **args)
 {
@@ -23,6 +25,9 @@ int main(int argc,char **args)
   PetscInt       i,n = 99,col[3],rstart,rend,nlocal,its;	/* n is the length of vector u, 99 in this case*/
   PetscScalar    zero = 0.0,one = 1.0,value[3],c=1.0,rho=1.0,dt=0.00001,l,lambda,diag;
 		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
+  hid_t		 file_id, dataset_id,dataspace_id;	/* identifiers */
+  herr_t	 status;
+  hsize_t	 dims[2];
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
   /* Get the value of c, rho, dt, l and the method for Euler for particular options */
@@ -37,14 +42,14 @@ int main(int argc,char **args)
   assert(rho>0.0);
   assert(dt>0.0);
   assert(l>0.0);
-  assert(Euler="explicit"||Euler="implicit");
+  assert(Euler=="explicit"||Euler=="implicit");
 
   lambda = rho * c / dt;
-  if(Euler="explicit")
+  if(Euler=="explicit")
   { //if explicit
     assert(lambda>20000);	/* assert that lambda>20000 when explicit Euler method is chosen */
     diag = 20000. - lambda;	/* diag is the diagonal element of matrix A */
-  }else if(Euler="implicit")
+  }else if(Euler=="implicit")
   { //if implicit
     diag = 20000. + lambda;
   }
@@ -144,13 +149,29 @@ int main(int argc,char **args)
   ierr = VecAssemblyEnd(f);CHKERRQ(ierr);
 
   //ierr = VecView(f,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  /* Create the h5 file if compute from the beginning*/
+  if(){
+    file_id = H5Fcreate(FILE, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = 99;
+    dims[1] = 2;
+    dataspace_id = H5Screate_simple(2, dims, NULL);
+    dataset_id = H5Dcreate2(file_id,"/temperature",H5T_STD_I32BE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  }
  
+  /* Open the h5 file if restart*/
+  if()
+  {
+    file_id = H5Fopen(FILE, H5F_ACC_RDWR, H5P_DEFAULT);
+    dataset_id = H5Dopen(file_id, "/temperature", H5P_DEFAULT);
+    status = H5Dread(dataset_id, H5T_NATIVE_LONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, u);
+  }
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 	If implicit Euler method is used       
 	Create the linear solver and set various options
 	Do iteration on vector u
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if(Euler="implicit")
+  if(Euler=="implicit")
   {
   /*
      Create linear solver context
@@ -196,7 +217,10 @@ int main(int argc,char **args)
   ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
   ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the norm of (u - u_next)
 
-  //write to HDF5 every 10 iterations
+  /* write to HDF5 every 10 iterations */
+  if(its%10==0){
+    status = H5Dwrite(dataset_id, H5T_NATIVE_LONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, u_next);
+  }
 
   ierr = VecCopy(u_next,u);CHKERRQ(ierr);		// copy u_next to u, go to next time step
 
@@ -205,7 +229,7 @@ int main(int argc,char **args)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                    Iteration on vector u when explicit Euler method
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if(Euler="explicit")
+  if(Euler=="explicit")
   {
     its=0;
     /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
@@ -219,8 +243,11 @@ int main(int argc,char **args)
     ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
     ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the norm of (u - u_next)
 
-    //write to HDF5 every 10 iterations
- 
+    /* write to HDF5 every 10 iterations */
+  if(its%10==0){
+    status = H5Dwrite(dataset_id, H5T_NATIVE_LONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, u_next);
+  } 
+
     ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
  
     }while(norm > tol && its < 100000000);
@@ -244,10 +271,14 @@ int main(int argc,char **args)
   */
   ierr = VecDestroy(&u);CHKERRQ(ierr); ierr = VecDestroy(&u_next);CHKERRQ(ierr);
   ierr = VecDestroy(&f);CHKERRQ(ierr); ierr = MatDestroy(&A);CHKERRQ(ierr);
-  if(Euler="implicit")
+  if(Euler=="implicit")
   {
     ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
   }
+  /* Close h5 file */
+  status = H5Dclose(dataset_id);
+  status = H5Sclose(dataspace_id);
+  status = H5Fclose(file_id);
 
   /*
      Always call PetscFinalize() before exiting a program.  This routine
