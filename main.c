@@ -9,6 +9,7 @@ static char help[] = "Solve the one-dimensional heat flux problem.\n\n";
      petscviewer.h - viewers               petscpc.h  - preconditioners
 */
 #include <petscksp.h>
+#include <assert.h>
 
 int main(int argc,char **args)
 {
@@ -16,6 +17,7 @@ int main(int argc,char **args)
   Mat            A;                /* linear system matrix */
   KSP            ksp;              /* linear solver context */
   PC             pc;               /* preconditioner context */
+  char		 Euler = "implicit";	/* the method of Euler, implicit or explicit, implicit by default */
   PetscReal      norm,tol=1000.*PETSC_MACHINE_EPSILON;  /* norm of vector u */
   PetscErrorCode ierr;
   PetscInt       i,n = 99,col[3],rstart,rend,nlocal,its;	/* n is the length of vector u, 99 in this case*/
@@ -23,18 +25,30 @@ int main(int argc,char **args)
 		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
-  /* Get the value of c, rho, dt, l for particular options */
+  /* Get the value of c, rho, dt, l and the method for Euler for particular options */
   ierr = PetscOptionsGetReal(NULL,NULL,"-c",&c,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-rho",&rho,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-l",&l,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetString(NULL,NULL,"-Euler",Euler,8,NULL);CHKERRQ(ierr);	/* implicit or explicit */
+
+  /* Assert that c, rho, dt, l are positive, Euler method is explicit or implicit */
+  assert(c>0.0);
+  assert(rho>0.0);
+  assert(dt>0.0);
+  assert(l>0.0);
+  assert(Euler="explicit"||Euler="implicit");
 
   lambda = rho * c / dt;
-//if explicit
-  diag = 20000. - lambda;
-//if implicit
-  diag = 20000. + lambda;	/* diag is the diagonal element of matrix A */
-//if explicit, check lambda,assertion
+  if(Euler="explicit")
+  { //if explicit
+    assert(lambda>20000);	/* assert that lambda>20000 when explicit Euler method is chosen */
+    diag = 20000. - lambda;	/* diag is the diagonal element of matrix A */
+  }else if(Euler="implicit")
+  { //if implicit
+    diag = 20000. + lambda;
+  }
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
          To get the temperature vector at time t, there are two methods.
 
@@ -134,7 +148,10 @@ int main(int argc,char **args)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 	If implicit Euler method is used       
 	Create the linear solver and set various options
+	Do iteration on vector u
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if(Euler="implicit")
+  {
   /*
      Create linear solver context
   */
@@ -168,10 +185,7 @@ int main(int argc,char **args)
   */
   ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
 
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                     Iteration on vector u
-     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-//if implicit
+  /* Iteration on vector u */
   its=0;
   do{
   its+=1;
@@ -187,26 +201,30 @@ int main(int argc,char **args)
   ierr = VecCopy(u_next,u);CHKERRQ(ierr);		// copy u_next to u, go to next time step
 
   }while(norm > tol && its < 100000000);
+  }
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+                   Iteration on vector u when explicit Euler method
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if(Euler="explicit")
+  {
+    its=0;
+    /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
+    ierr = MatScale(A,-1.0/lambda);CHKERRQ(ierr);		// A = -1.0/lambda * A
+    ierr = VecScale(f,1.0/lambda);CHKERRQ(ierr);		// f = 1/lambda * f
+    /* The algorithm becomes u_next = A * u + f */
+    do{
+    its+=1;
+    ierr = MatMultAdd(A,u,f,u_next);CHKERRQ(ierr);	// u_next = A * u + f
 
-// if explicit
-  its=0;
-  /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
-  ierr = MatScale(A,-1.0/lambda);CHKERRQ(ierr);		// A = -1.0/lambda * A
-  ierr = VecScale(f,1.0/lambda);CHKERRQ(ierr);		// f = 1/lambda * f
-  /* The algorithm becomes u_next = A * u + f */
-  do{
-  its+=1;
-  ierr = MatMultAdd(A,u,f,u_next);CHKERRQ(ierr);	// u_next = A * u + f
+    ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
+    ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the norm of (u - u_next)
 
-  ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
-  ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the norm of (u - u_next)
-
-  //write to HDF5 every 10 iterations
+    //write to HDF5 every 10 iterations
  
-  ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+    ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
  
-  }while(norm > tol && its < 100000000);
-
+    }while(norm > tol && its < 100000000);
+  }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Check solution and clean up
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -226,7 +244,10 @@ int main(int argc,char **args)
   */
   ierr = VecDestroy(&u);CHKERRQ(ierr); ierr = VecDestroy(&u_next);CHKERRQ(ierr);
   ierr = VecDestroy(&f);CHKERRQ(ierr); ierr = MatDestroy(&A);CHKERRQ(ierr);
-  ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
+  if(Euler="implicit")
+  {
+    ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
+  }
 
   /*
      Always call PetscFinalize() before exiting a program.  This routine
