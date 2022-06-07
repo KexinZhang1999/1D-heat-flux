@@ -1,7 +1,7 @@
 #!/bin/bash
-#BSUB -J petsc-solve-1D-HeatEquation
+#BSUB -J petsc-HeatEquation
 #BSUB -q ser
-#BSUB -n 10 10 10 10 10 10 10 10 
+#BSUB -n 10
 #BSUB -e log
 #BSUB -o log
 
