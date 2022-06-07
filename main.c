@@ -9,8 +9,8 @@ static char help[] = "Solve the one-dimensional heat flux problem.\n\n";
      petscviewer.h - viewers               petscpc.h  - preconditioners
 */
 #include <petscksp.h>
+#include <petscviewerhdf5.h>
 #include <assert.h>
-#include <hdf5.h>
 #define FILE "result.h5"
 
 int main(int argc,char **args)
@@ -19,15 +19,13 @@ int main(int argc,char **args)
   Mat            A;                /* linear system matrix */
   KSP            ksp;              /* linear solver context */
   PC             pc;               /* preconditioner context */
+  PetscViewer	 viewer;	   /* for HDF5 input/output */
   char		 Euler = "implicit";	/* the method of Euler, implicit or explicit, implicit by default */
   PetscReal      norm,tol=1000.*PETSC_MACHINE_EPSILON;  /* norm of vector u */
   PetscErrorCode ierr;
-  PetscInt       i,n = 99,col[3],rstart,rend,nlocal,its;	/* n is the length of vector u, 99 in this case*/
+  PetscInt       i,n = 99,col[3],rstart,rend,nlocal,its,restart=0;  /* n is the length of vector u, 99 in this case*/
   PetscScalar    zero = 0.0,one = 1.0,value[3],c=1.0,rho=1.0,dt=0.00001,l,lambda,diag;
 		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
-  hid_t		 file_id, dataset_id,dataspace_id;	/* identifiers */
-  herr_t	 status;
-  hsize_t	 dims[2];
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
   /* Get the value of c, rho, dt, l and the method for Euler for particular options */
@@ -36,6 +34,7 @@ int main(int argc,char **args)
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-l",&l,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetString(NULL,NULL,"-Euler",Euler,8,NULL);CHKERRQ(ierr);	/* implicit or explicit */
+  ierr = PetscOptionsGetInt(NULL,NULL,"-restart",&restart,NULL);CHKERRQ(ierr);
 
   /* Assert that c, rho, dt, l are positive, Euler method is explicit or implicit */
   assert(c>0.0);
@@ -43,6 +42,7 @@ int main(int argc,char **args)
   assert(dt>0.0);
   assert(l>0.0);
   assert(Euler=="explicit"||Euler=="implicit");
+  assert(restart==0||restart==1)
 
   lambda = rho * c / dt;
   if(Euler=="explicit")
@@ -148,22 +148,13 @@ int main(int argc,char **args)
   ierr = VecAssemblyBegin(f);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(f);CHKERRQ(ierr);
 
-  //ierr = VecView(f,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  /* Create the h5 file if compute from the beginning*/
-  if(){
-    file_id = H5Fcreate(FILE, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-    dims[0] = 99;
-    dims[1] = 2;
-    dataspace_id = H5Screate_simple(2, dims, NULL);
-    dataset_id = H5Dcreate2(file_id,"/temperature",H5T_STD_I32BE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  }
- 
-  /* Open the h5 file if restart*/
-  if()
-  {
-    file_id = H5Fopen(FILE, H5F_ACC_RDWR, H5P_DEFAULT);
-    dataset_id = H5Dopen(file_id, "/temperature", H5P_DEFAULT);
-    status = H5Dread(dataset_id, H5T_NATIVE_LONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, u);
+  if(!restart)
+  {/* Create the h5 file if compute from the beginning*/
+    ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD,FILE,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+  }else if(restart)
+  {/* Open the h5 file if restart*/
+    ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD,FILE,FILE_MODE_UPDATE,&viewer);CHKERRQ(ierr);
+    ierr = VecLoad(u,viewer);CHKERRQ(ierr);
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -217,12 +208,12 @@ int main(int argc,char **args)
   ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
   ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the norm of (u - u_next)
 
+  ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+
   /* write to HDF5 every 10 iterations */
   if(its%10==0){
-    status = H5Dwrite(dataset_id, H5T_NATIVE_LONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, u_next);
+    ierr = VecView(u,viewer);CHKERRQ(ierr);
   }
-
-  ierr = VecCopy(u_next,u);CHKERRQ(ierr);		// copy u_next to u, go to next time step
 
   }while(norm > tol && its < 100000000);
   }
@@ -243,12 +234,12 @@ int main(int argc,char **args)
     ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
     ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the norm of (u - u_next)
 
-    /* write to HDF5 every 10 iterations */
-  if(its%10==0){
-    status = H5Dwrite(dataset_id, H5T_NATIVE_LONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, u_next);
-  } 
-
     ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+
+    /* write to HDF5 every 10 iterations */
+    if(its%10==0){
+      ierr = VecView(u,viewer);CHKERRQ(ierr);
+    } 
  
     }while(norm > tol && its < 100000000);
   }
@@ -275,10 +266,7 @@ int main(int argc,char **args)
   {
     ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
   }
-  /* Close h5 file */
-  status = H5Dclose(dataset_id);
-  status = H5Sclose(dataspace_id);
-  status = H5Fclose(file_id);
+  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
 
   /*
      Always call PetscFinalize() before exiting a program.  This routine
