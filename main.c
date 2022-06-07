@@ -15,16 +15,18 @@ static char help[] = "Solve the one-dimensional heat flux problem.\n\n";
 
 int main(int argc,char **args)
 {
-  Vec            u,u_next,f;       /* vector u for temperature, vector f for the force (sine function) */
+  Vec            u,u_next,f,grid;  /* vector u for temperature, vector f for the force (sine function) */
   Mat            A;                /* linear system matrix */
   KSP            ksp;              /* linear solver context */
   PC             pc;               /* preconditioner context */
   PetscViewer	 viewer;	   /* for HDF5 input/output */
-  char		 Euler = "implicit";	/* the method of Euler, implicit or explicit, implicit by default */
-  PetscReal      norm,tol=1000.*PETSC_MACHINE_EPSILON;  /* norm of vector u */
   PetscErrorCode ierr;
-  PetscInt       i,n = 99,col[3],rstart,rend,nlocal,its,restart=0;  /* n is the length of vector u, 99 in this case*/
-  PetscScalar    zero = 0.0,one = 1.0,value[3],c=1.0,rho=1.0,dt=0.00001,l,lambda,diag;
+  PetscInt       i,n = 99,col[3],rstart,rend,nlocal,its,its_max,restart=0,Euler=1; 
+		 /* n is the length of vector u, 99 in this case
+ 		    Euler: 1 for implicit and 0 for explicit
+		    restart: 0 for no restart and 1 for restart
+		  */
+  PetscScalar    zero = 0.0,value[3],c=1.0,rho=1.0,dt=0.00001,l,lambda,diag,t=3600.;
 		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
@@ -32,24 +34,27 @@ int main(int argc,char **args)
   ierr = PetscOptionsGetReal(NULL,NULL,"-c",&c,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-rho",&rho,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-dt",&dt,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetReal(NULL,NULL,"-t",&t,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-l",&l,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetString(NULL,NULL,"-Euler",Euler,8,NULL);CHKERRQ(ierr);	/* implicit or explicit */
+  ierr = PetscOptionsGetInt(NULL,NULL,"-Euler",&Euler,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetInt(NULL,NULL,"-restart",&restart,NULL);CHKERRQ(ierr);
 
   /* Assert that c, rho, dt, l are positive, Euler method is explicit or implicit */
   assert(c>0.0);
   assert(rho>0.0);
   assert(dt>0.0);
+  assert(t>0.0);
   assert(l>0.0);
-  assert(Euler=="explicit"||Euler=="implicit");
-  assert(restart==0||restart==1)
+  assert(Euler==0||Euler==1);
+  assert(restart==0||restart==1);
 
+  its_max = t / dt;
   lambda = rho * c / dt;
-  if(Euler=="explicit")
+  if(Euler==0)
   { //if explicit
     assert(lambda>20000);	/* assert that lambda>20000 when explicit Euler method is chosen */
     diag = 20000. - lambda;	/* diag is the diagonal element of matrix A */
-  }else if(Euler=="implicit")
+  }else if(Euler==1)
   { //if implicit
     diag = 20000. + lambda;
   }
@@ -76,6 +81,10 @@ int main(int argc,char **args)
   ierr = VecSetFromOptions(u);CHKERRQ(ierr);
   ierr = VecDuplicate(u,&f);CHKERRQ(ierr);
   ierr = VecDuplicate(u,&u_next);CHKERRQ(ierr);
+
+  ierr = VecCreate(PETSC_COMM_WORLD,&grid);CHKERRQ(ierr);
+  ierr = VecSetSizes(grid,PETSC_DECIDE,3);CHKERRQ(ierr);	// vec grid contains 3 values:dx,dt,t
+  ierr = VecSetFromOptions(grid);CHKERRQ(ierr);
 
   /* Identify the starting and ending mesh points on each
      processor for the interior part of the mesh. We let PETSc decide
@@ -148,6 +157,14 @@ int main(int argc,char **args)
   ierr = VecAssemblyBegin(f);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(f);CHKERRQ(ierr);
 
+  /* Assemble the vector grid which contains 3 values, which are dx, dt and t */
+  col[0] = 0; col[1] = 1; col[2] = 2;
+  value[0] = 0.01; value[1] = dt; value[2] = 0.0;	//dx=0.01,dt,t=0
+  ierr = VecSetValues(grid,3,col,value,INSERT_VALUES);CHKERRQ(ierr);
+
+  ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+
   if(!restart)
   {/* Create the h5 file if compute from the beginning*/
     ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD,FILE,FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
@@ -155,6 +172,9 @@ int main(int argc,char **args)
   {/* Open the h5 file if restart*/
     ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD,FILE,FILE_MODE_UPDATE,&viewer);CHKERRQ(ierr);
     ierr = VecLoad(u,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+    ierr = VecLoad(grid,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -162,7 +182,7 @@ int main(int argc,char **args)
 	Create the linear solver and set various options
 	Do iteration on vector u
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if(Euler=="implicit")
+  if(Euler==1)
   {
   /*
      Create linear solver context
@@ -205,22 +225,29 @@ int main(int argc,char **args)
   ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);		// u = f + lambda * u
   ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);		// A * u_next = u  
 
-  ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
-  ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the norm of (u - u_next)
-
   ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
   /* write to HDF5 every 10 iterations */
+  i = 2; value[0] = 10.0*dt;
   if(its%10==0){
     ierr = VecView(u,viewer);CHKERRQ(ierr);
+
+    ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+
+    ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);     //Set the time grid[2]=grid[2]+10*dt
+    ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+    ierr = VecView(grid,viewer);CHKERRQ(ierr);
+
+    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
   }
 
-  }while(norm > tol && its < 100000000);
+  }while(its < its_max);
   }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                    Iteration on vector u when explicit Euler method
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if(Euler=="explicit")
+  if(Euler==0)
   {
     its=0;
     /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
@@ -231,18 +258,28 @@ int main(int argc,char **args)
     its+=1;
     ierr = MatMultAdd(A,u,f,u_next);CHKERRQ(ierr);	// u_next = A * u + f
 
-    ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
-    ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the norm of (u - u_next)
-
     ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
     /* write to HDF5 every 10 iterations */
+    i = 2; value[0] = 10.0*dt;
     if(its%10==0){
       ierr = VecView(u,viewer);CHKERRQ(ierr);
+
+      ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+      
+      ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);	//Set the time grid[2]=grid[2]+10*dt
+      ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+      ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+      ierr = VecView(grid,viewer);CHKERRQ(ierr);
+
+      ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
     } 
  
-    }while(norm > tol && its < 100000000);
+    }while(its < its_max);
   }
+
+
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Check solution and clean up
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -262,7 +299,8 @@ int main(int argc,char **args)
   */
   ierr = VecDestroy(&u);CHKERRQ(ierr); ierr = VecDestroy(&u_next);CHKERRQ(ierr);
   ierr = VecDestroy(&f);CHKERRQ(ierr); ierr = MatDestroy(&A);CHKERRQ(ierr);
-  if(Euler=="implicit")
+  ierr = VecDestroy(&grid);CHKERRQ(ierr);
+  if(Euler==1)
   {
     ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
   }
