@@ -1,18 +1,12 @@
 #!/bin/bash
-#BSUB -J petsc-ex2
+#BSUB -J petsc-solve-1D-HeatEquation
 #BSUB -q ser
 #BSUB -n 4
-#BSUB -e log2.err
-#BSUB -o log2.out
-#BSUB -m 'r01n27'
+#BSUB -e log
+#BSUB -o log
 
 module purge
 module load intel/2018.4
 module load mpi/intel/2018.4
 
-mpirun -np 1 ./ex2.out -n 100 -log_view > p1n100.log 2>&1
-mpirun -np 2 ./ex2.out -n 100 -log_view > p2n100.log 2>&1
-mpirun -np 4 ./ex2.out -n 100 -log_view > p4n100.log 2>&1
-
-mpirun -np 2 ./ex2.out -n 200 -log_view > p2n200.log 2>&1
-mpirun -np 3 ./ex2.out -n 300 -log_view > p3n300.log 2>&1
+mpirun ./solve.out -dt 0.001 -log_view > log_view 2>&1
