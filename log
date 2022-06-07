@@ -1,0 +1,49 @@
+Sender: LSF System <lsfadmin@r01n12>
+Subject: Job 3823816: <petsc-solve-1D-HeatEquation> in cluster <sustchpc> Exited
+
+Job <petsc-solve-1D-HeatEquation> was submitted from host <login02> by user <ese-zhangkx> in cluster <sustchpc> at Tue Jun  7 17:37:09 2022.
+Job was executed on host(s) <1*r01n12>, in queue <ser>, as user <ese-zhangkx> in cluster <sustchpc> at Tue Jun  7 17:37:09 2022.
+                            <3*r01n31>
+</work/ese-zhangkx> was used as the home directory.
+</work/ese-zhangkx/hpc/1D-heat-flux> was used as the working directory.
+Started at Tue Jun  7 17:37:09 2022.
+Terminated at Tue Jun  7 17:39:17 2022.
+Results reported at Tue Jun  7 17:39:17 2022.
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/bash
+#BSUB -J petsc-solve-1D-HeatEquation
+#BSUB -q ser
+#BSUB -n 4
+#BSUB -e log
+#BSUB -o log
+
+module purge
+module load intel/2018.4
+module load mpi/intel/2018.4
+
+mpirun ./solve.out -dt 0.001 -log_view > log_view 2>&1
+
+------------------------------------------------------------
+
+TERM_OWNER: job killed by owner.
+Exited with signal termination: 9.
+
+Resource usage summary:
+
+    CPU time :                                   230.00 sec.
+    Max Memory :                                 150 MB
+    Average Memory :                             95.50 MB
+    Total Requested Memory :                     -
+    Delta Memory :                               -
+    Max Swap :                                   -
+    Max Processes :                              13
+    Max Threads :                                19
+    Run time :                                   128 sec.
+    Turnaround time :                            128 sec.
+
+The output (if any) follows:
+

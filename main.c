@@ -26,7 +26,7 @@ int main(int argc,char **args)
  		    Euler: 1 for implicit and 0 for explicit
 		    restart: 0 for no restart and 1 for restart
 		  */
-  PetscScalar    zero = 0.0,value[3],c=1.0,rho=1.0,dt=0.00001,l,lambda,diag,t=3600.;
+  PetscScalar    zero = 0.0,one = 1.0,value[3],c=1.0,rho=1.0,dt=0.00001,l=1.0,lambda,diag,t=3600.;
 		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
@@ -145,8 +145,8 @@ int main(int argc,char **args)
 
   //ierr = MatView(A,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
-  /* Initialize u to be zero vector */
-  ierr = VecSet(u,zero);CHKERRQ(ierr);
+  /* Initialize u to be one */
+  ierr = VecSet(u,one);CHKERRQ(ierr);
   
   /* Assemble the vector f */
   for (i=rstart; i<rend;i++)

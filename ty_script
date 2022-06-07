@@ -1,7 +1,7 @@
 #!/bin/bash
 #BSUB -J petsc-solve-1D-HeatEquation
 #BSUB -q ser
-#BSUB -n 4
+#BSUB -n 10 10 10 10 10 10 10 10 
 #BSUB -e log
 #BSUB -o log
 
@@ -9,4 +9,4 @@ module purge
 module load intel/2018.4
 module load mpi/intel/2018.4
 
-mpirun ./solve.out -dt 0.001 -log_view > log_view 2>&1
+mpirun ./solve.out -dt 0.01 -t 60.0 -log_view > log_view 2>&1
