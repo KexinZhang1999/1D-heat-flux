@@ -11,26 +11,32 @@ static char help[] = "Solve the one-dimensional heat flux problem.\n\n";
 #include <petscksp.h>
 #include <petscviewerhdf5.h>
 #include <assert.h>
+#define pi acos(-1.0)
 #define FILE "result.h5"
 
 int main(int argc,char **args)
 {
-  Vec            u,u_next,f,grid;  /* vector u for temperature, vector f for the force (sine function) */
+  Vec            u,u_next,u_exact,f,grid;  /* vector u for temperature, vector f for the force (sine function) */
   Mat            A;                /* linear system matrix */
   KSP            ksp;              /* linear solver context */
   PC             pc;               /* preconditioner context */
   PetscViewer	 viewer;	   /* for HDF5 input/output */
   PetscErrorCode ierr;
-  PetscInt       i,n,col[3],rstart,rend,nlocal,its,its_max,restart=0,Euler=1; 
+  PetscInt       i,n,col[3],rstart,rend,nlocal,its=0,its_max,restart=0,Euler=1,state=1; 
 		 /* n is the length of vector u, 1/dx-1 in this case
- 		    Euler: 1 for implicit and 0 for explicit
-		    restart: 0 for no restart and 1 for restart
+ 		    Euler: 1 for implicit (default) and 0 for explicit
+		    restart: 0 for no restart (default) and 1 for restart
+		    state: 0 for transient state solution and 1 for steady state solution (default)
 		  */
-  PetscScalar    zero = 0.0,one = 1.0,value[3],c=1.0,rho=1.0,dx=0.01,dt=0.00001,l=1.0,lambda,diag,t=3600.;
+  PetscReal      norm,tol=1.e-7,error;
+		/* norm is the NORM_2 of (u-u_next), tol defines the tolerence of steady state solution,
+ 		   error is NORM_INFINITY of (u-u_exact)*/
+  PetscScalar    value[3],c=1.0,rho=1.0,dx=0.01,dt=0.00001,l=1.0,lambda,diag,t=3600.;
 		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
   /* Get the value of c, rho, dt, l and the method for Euler for particular options */
+  ierr = PetscOptionsGetReal(NULL,NULL,"-tol",&tol,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-c",&c,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-rho",&rho,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-dx",&dx,NULL);CHKERRQ(ierr);
@@ -39,8 +45,10 @@ int main(int argc,char **args)
   ierr = PetscOptionsGetReal(NULL,NULL,"-l",&l,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetInt(NULL,NULL,"-Euler",&Euler,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetInt(NULL,NULL,"-restart",&restart,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-state",&state,NULL);CHKERRQ(ierr);
 
   /* Assert that c, rho, dt, l are positive, Euler method is explicit or implicit */
+  assert(tol>0.0);
   assert(c>0.0);
   assert(rho>0.0);
   assert(dx>0.0);
@@ -49,6 +57,7 @@ int main(int argc,char **args)
   assert(l>0.0);
   assert(Euler==0||Euler==1);
   assert(restart==0||restart==1);
+  assert(state==0||state==1);
 
   its_max = t / dt;
   n = 1.0/dx - 1;
@@ -84,6 +93,10 @@ int main(int argc,char **args)
   ierr = VecSetFromOptions(u);CHKERRQ(ierr);
   ierr = VecDuplicate(u,&f);CHKERRQ(ierr);
   ierr = VecDuplicate(u,&u_next);CHKERRQ(ierr);
+  if(state==1){
+    //check error only when computing steady state solution, u_exact is needed.
+    ierr = VecDuplicate(u,&u_exact);CHKERRQ(ierr);
+  }
   ierr = PetscObjectSetName((PetscObject)u, "temperature");CHKERRQ(ierr);
 
   ierr = VecCreate(PETSC_COMM_WORLD,&grid);CHKERRQ(ierr);
@@ -159,10 +172,23 @@ int main(int argc,char **args)
   ierr = VecAssemblyBegin(u);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(u);CHKERRQ(ierr);
   
+  /* When computing steady state solution, assemble the exact solution */
+  /* u_exact = sin(l*pi*x)/l/l/pi/pi - x * sin(l*pi)/l/l/pi/pi where x = (i+1)*dx */
+  if(state==1)
+  {
+    for (i=rstart; i<rend;i++)
+    {
+      value[0] = sin(l*pi*dx*(i+1))/l/l/pi/pi - (i+1) * dx * sin(l*pi)/l/l/pi/pi;
+      ierr = VecSetValues(u_exact,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);
+    }
+    ierr = VecAssemblyBegin(u_exact);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(u_exact);CHKERRQ(ierr);
+  }
+
   /* Assemble the vector f */
   for (i=rstart; i<rend;i++)
   {
-    value[0] = sin(dx*l*3.1415926*(i+1));
+    value[0] = sin(dx*l*pi*(i+1));
     ierr = VecSetValues(f,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = VecAssemblyBegin(f);CHKERRQ(ierr);
@@ -229,7 +255,7 @@ int main(int argc,char **args)
   ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
 
   /* Iteration on vector u */
-  its=0;
+  if(state==0){
   do{
   its+=1;
   /* Solve linear system A * u_next = lambda * u + f */
@@ -252,15 +278,42 @@ int main(int argc,char **args)
 
     ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
   }
-
   }while(its < its_max);
+  }else if(state==1){
+  do{
+  its+=1;
+  /* Solve linear system A * u_next = lambda * u + f */
+  ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);             // u = f + lambda * u
+  ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);          // A * u_next = u
+
+  ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
+  ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the NORM_2 of u
+
+  ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+
+  /* write to HDF5 every 10 iterations */
+  i = 2; value[0] = 10.0*dt;
+  if(its%10==0){
+    ierr = VecView(u,viewer);CHKERRQ(ierr);
+
+    ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+
+    ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);     //Set the time grid[2]=grid[2]+10*dt
+    ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+    ierr = VecView(grid,viewer);CHKERRQ(ierr);
+
+    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
+  }
+  }while(norm > tol);
+  }
   }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                    Iteration on vector u when explicit Euler method
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if(Euler==0)
   {
-    its=0;
+    if(state==0){
     /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
     ierr = MatScale(A,-1.0/lambda);CHKERRQ(ierr);		// A = -1.0/lambda * A
     ierr = VecScale(f,1.0/lambda);CHKERRQ(ierr);		// f = 1/lambda * f
@@ -285,8 +338,37 @@ int main(int argc,char **args)
 
       ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
     } 
- 
     }while(its < its_max);
+    }else if(state==1){
+    /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
+    ierr = MatScale(A,-1.0/lambda);CHKERRQ(ierr);               // A = -1.0/lambda * A
+    ierr = VecScale(f,1.0/lambda);CHKERRQ(ierr);                // f = 1/lambda * f
+    /* The algorithm becomes u_next = A * u + f */
+    do{
+    its+=1;
+    ierr = MatMultAdd(A,u,f,u_next);CHKERRQ(ierr);      // u_next = A * u + f
+
+    ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
+    ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the NORM_2 of u
+
+    ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+
+    /* write to HDF5 every 10 iterations */
+    i = 2; value[0] = 10.0*dt;
+    if(its%10==0){
+      ierr = VecView(u,viewer);CHKERRQ(ierr);
+
+      ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+
+      ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);    //Set the time grid[2]=grid[2]+10*dt
+      ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+      ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+      ierr = VecView(grid,viewer);CHKERRQ(ierr);
+
+      ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
+    }
+    }while(norm > tol);
+    }
   }
 
 
@@ -295,14 +377,14 @@ int main(int argc,char **args)
                       Check solution and clean up
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   /*
-     Check the error
-  *//*
-  ierr = VecAXPY(x,-1.0,u);CHKERRQ(ierr);
-  ierr = VecNorm(x,NORM_2,&norm);CHKERRQ(ierr);
-  ierr = KSPGetIterationNumber(ksp,&its);CHKERRQ(ierr);
-  if (norm > tol) {
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm of error %g, Iterations %D\n",(double)norm,its);CHKERRQ(ierr);
-  }*/
+     Check the error when computing steady state solution
+  */
+  if(state==1){
+    ierr = VecAXPY(u_exact,-1.0,u);CHKERRQ(ierr);	// u_exact = u_exact - u
+    ierr = VecNorm(u_exact,NORM_INFINITY,&error);CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"error: %g, dx: %g, dt: %g,iterations: %D\n",error,dx,dt,its);CHKERRQ(ierr);
+  }
+
 
   /*
      Free work space.  All PETSc objects should be destroyed when they
@@ -311,8 +393,10 @@ int main(int argc,char **args)
   ierr = VecDestroy(&u);CHKERRQ(ierr); ierr = VecDestroy(&u_next);CHKERRQ(ierr);
   ierr = VecDestroy(&f);CHKERRQ(ierr); ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&grid);CHKERRQ(ierr);
-  if(Euler==1)
-  {
+  if(state==1){
+    ierr = VecDestroy(&u_exact);CHKERRQ(ierr);
+  }
+  if(Euler==1){
     ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
   }
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
