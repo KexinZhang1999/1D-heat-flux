@@ -1,0 +1,21 @@
+#!/bin/bash
+#BSUB -J petsc-HeatEquation
+#BSUB -q ser
+#BSUB -n 10
+#BSUB -e log
+#BSUB -o log
+
+module purge
+module load intel/2018.4
+module load mpi/intel/2018.4
+
+mpirun ./solve.out -dt 0.01 -t 10.0 -state 0
+mpirun ./solve.out -dt 0.01 -t 10.0 -state 0 -restart 1
+mv result.h5 Restart.h5
+
+mpirun ./solve.out -dt 0.01 -t 20.0 -state 0
+mv result.h5 NoRestart.h5
+
+${HOME}/lib/hdf5-1.12.1/bin/h5dump Restart.h5
+${HOME}/lib/hdf5-1.12.1/bin/h5dump NoRestart.h5
+${HOME}/lib/hdf5-1.12.1/bin/h5diff Restart.h5 NoRestart.h5

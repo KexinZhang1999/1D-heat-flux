@@ -34,6 +34,8 @@ OPTIONS:
 
     Set the time t in seconds to compute the transient solution at time t.(3600.0 by default)
 
+    If the restart option is turned on, the computed transient solution is t seconds after the recorded solution in "result.h5"
+
   -l		RealNumber
 
     Set the parameter l in the governing equation.(1.0 by default)
