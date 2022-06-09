@@ -1,7 +1,7 @@
 #!/bin/bash
 #BSUB -J petsc-HeatEquation
 #BSUB -q ser
-#BSUB -n 30
+#BSUB -n 20
 #BSUB -e log
 #BSUB -o log
 
@@ -9,11 +9,9 @@ module purge
 module load intel/2018.4
 module load mpi/intel/2018.4
 
-mpirun ./solve.out -dt 1.e-6 -dx 1.0e-4 -state 1
-mpirun ./solve.out -dt 1.e-6 -dx 1.0e-3 -state 1
-mpirun ./solve.out -dt 1.e-6 -dx 1.0e-2 -state 1
-mpirun ./solve.out -dt 1.e-6 -dx 1.0e-1 -state 1
+mpirun ./solve.out -dt 0.01 -dx 1.0e-4 -state 1
+mpirun ./solve.out -dt 0.01 -dx 1.0e-3 -state 1
+mpirun ./solve.out -dt 0.01 -dx 1.0e-2 -state 1
+mpirun ./solve.out -dt 0.01 -dx 1.0e-1 -state 1
 
-mpirun ./solve.out -dt 1.e-4 -dx 1.0e-4 -state 1
-mpirun ./solve.out -dt 1.e-2 -dx 1.0e-4 -state 1
-mpirun ./solve.out -dt 1. -dx 1.0e-4 -state 1
+

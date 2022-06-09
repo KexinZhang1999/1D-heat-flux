@@ -1,0 +1,11 @@
+Norm   10.753      iterations      1
+Norm   3.70384      iterations      2
+Norm   1.82468      iterations      3
+Norm   0.916284      iterations      4
+Norm   0.461019      iterations      5
+Norm   0.23202      iterations      6
+Norm   0.116775      iterations      7
+Norm   0.0587731      iterations      8
+Norm   0.0295806      iterations      9
+Norm   0.014888      iterations      10
+error: 0.00324671, dx: 0.01, dt: 0.1,iterations: 10

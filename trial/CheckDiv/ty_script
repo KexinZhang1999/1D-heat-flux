@@ -1,0 +1,18 @@
+#!/bin/bash
+#BSUB -J petsc-HeatEquation
+#BSUB -q ser
+#BSUB -n 10
+#BSUB -e log
+#BSUB -o log
+
+module purge
+module load intel/2018.4
+module load mpi/intel/2018.4
+
+mpirun ./solve.out -Euler 0 -t 1.0 -state 0 -dt 5.0e-5 > Ex5e-5.txt
+mpirun ./solve.out -Euler 0 -t 1.0 -state 0 -dt 4.0e-5 > Ex4e-5.txt
+mpirun ./solve.out -Euler 0 -t 1.0 -state 0 -dt 6.0e-5 > Ex6e-5.txt
+
+mpirun ./solve.out -Euler 1 -t 1.0 -state 0 -dt 5.0e-5 > Im5e-5.txt
+mpirun ./solve.out -Euler 1 -t 1.0 -state 0 -dt 1.0e-3 > Im1e-3.txt
+mpirun ./solve.out -Euler 1 -t 1.0 -state 0 -dt 1.0e-1 > Im1e-1.txt

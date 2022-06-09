@@ -31,7 +31,7 @@ int main(int argc,char **args)
   PetscReal      norm,tol=1.e-7,error;
 		/* norm is the NORM_2 of (u-u_next), tol defines the tolerence of steady state solution,
  		   error is NORM_INFINITY of (u-u_exact)*/
-  PetscScalar    value[3],c=1.0,rho=1.0,dx=0.01,dt=0.00001,l=1.0,lambda,diag,t=10.0;
+  PetscScalar    value[3],c=1.0,rho=1.0,dx=0.01,dt=0.00001,l=1.0,lambda,diag,t=3600.;
 		/* c and rho are the parameters in the heat equation, l is the parameter in the sine function */
 
   ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
@@ -54,7 +54,6 @@ int main(int argc,char **args)
   assert(dx>0.0);
   assert(dt>0.0);
   assert(t>0.0);
-  assert(dt<t);
   assert(l>0.0);
   assert(Euler==0||Euler==1);
   assert(restart==0||restart==1);
@@ -65,7 +64,7 @@ int main(int argc,char **args)
   lambda = rho * c / dt;
   if(Euler==0)
   { //if explicit
-    assert(lambda>(2.0/dx/dx));	/* assert that lambda>2/dx/dx when explicit Euler method is chosen */
+    //assert(lambda>(2.0/dx/dx));	/* assert that lambda>2/dx/dx when explicit Euler method is chosen */
     diag = 2./dx/dx - lambda;	/* diag is the diagonal element of matrix A */
   }else if(Euler==1)
   { //if implicit
@@ -170,7 +169,7 @@ int main(int argc,char **args)
   ierr = VecAssemblyBegin(u);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(u);CHKERRQ(ierr);
   
-  /* Set the exact solution */
+  /* Assemble the exact solution when t tends to infinity */
   /* u_exact = sin(l*pi*x)/l/l/pi/pi - x * sin(l*pi)/l/l/pi/pi where x = (i+1)*dx */
   for (i=rstart; i<rend;i++)
   {
@@ -204,11 +203,18 @@ int main(int argc,char **args)
   {/* Open the h5 file if restart*/
     ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD,FILE,FILE_MODE_UPDATE,&viewer);CHKERRQ(ierr);
     ierr = VecLoad(u,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+    ierr = VecLoad(grid,viewer);CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);    
   }
 
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -       
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+	If implicit Euler method is used       
 	Create the linear solver and set various options
+	Do iteration on vector u
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if(Euler==1)
+  {
   /*
      Create linear solver context
   */
@@ -242,70 +248,72 @@ int main(int argc,char **args)
   */
   ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
 
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                  Iteration on vector u when implicit Euler method
-     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if(Euler==1)
-  {
-    i = 2;
-    if(state==0){
-    do{
-    its+=1;
-    /* Solve linear system A * u_next = lambda * u + f */
-    ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);		// u = f + lambda * u
-    ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);		// A * u_next = u  
+  /* Iteration on vector u */
+  if(state==0){
+  do{
+  its+=1;
+  /* Solve linear system A * u_next = lambda * u + f */
+  ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);		// u = f + lambda * u
+  ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);		// A * u_next = u  
 
-    ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+  ierr = VecAXPBY(u,-1.0/lambda,1.0/lambda,f);CHKERRQ(ierr);    // return to the original u = 1/lambda * u - 1/lambda * f
+  ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
+  ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the NORM_2 of u
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm   %g      iterations      %D\n",norm,its);CHKERRQ(ierr);
 
-    /* write to HDF5 every 10 iterations */
-    if(its%10==0){
-      ierr = VecView(u,viewer);CHKERRQ(ierr);
+  ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
-      ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
-      value[0] = its * dt;
-      ierr = VecSetValues(grid,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);     //Set the time grid[2]=its*dt
-      ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
-      ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
-      ierr = VecView(grid,viewer);CHKERRQ(ierr);
+  /* write to HDF5 every 10 iterations */
+  i = 2; value[0] = 10.0*dt;
+  if(its%10==0){
+    ierr = VecView(u,viewer);CHKERRQ(ierr);
 
-      ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
-    }
-    }while(its < its_max);	// the iteration stops until its > t / dt when computing transient state solution
-    }else if(state==1){
-    do{
-    its+=1;
-    /* Solve linear system A * u_next = lambda * u + f */
-    ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);             // u = f + lambda * u
-    ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);          // A * u_next = u
+    ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
 
-    ierr = VecAXPBY(u,-1.0/lambda,1.0/lambda,f);CHKERRQ(ierr);	// return to the original u = 1/lambda * u - 1/lambda * f
-    ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
-    ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the NORM_2 of u
+    ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);     //Set the time grid[2]=grid[2]+10*dt
+    ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+    ierr = VecView(grid,viewer);CHKERRQ(ierr);
 
-    ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
+    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
+  }
+  }while(its < its_max);	// the iteration stops until its > t / dt when computing transient state solution
+  }else if(state==1){
+  do{
+  its+=1;
+  /* Solve linear system A * u_next = lambda * u + f */
+  ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);             // u = f + lambda * u
+  ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);          // A * u_next = u
 
-    /* write to HDF5 every 10 iterations */
-    if(its%10==0){
-      ierr = VecView(u,viewer);CHKERRQ(ierr);
+  ierr = VecAXPBY(u,-1.0/lambda,1.0/lambda,f);CHKERRQ(ierr);	// return to the original u = 1/lambda * u - 1/lambda * f
+  ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
+  ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the NORM_2 of u
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm   %g      iterations      %D\n",norm,its);CHKERRQ(ierr);
 
-      ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
-      value[0] = its * dt;
-      ierr = VecSetValues(grid,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);     //Set the time grid[2]=its*dt
-      ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
-      ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
-      ierr = VecView(grid,viewer);CHKERRQ(ierr);
+  ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
-      ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
-    }
-    }while(norm > tol);	// the iteration stops until the value of u get stable when computing steady state solution
-    }
+  /* write to HDF5 every 10 iterations */
+  i = 2; value[0] = 10.0*dt;
+  if(its%10==0){
+    ierr = VecView(u,viewer);CHKERRQ(ierr);
+
+    ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+
+    ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);     //Set the time grid[2]=grid[2]+10*dt
+    ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+    ierr = VecView(grid,viewer);CHKERRQ(ierr);
+
+    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
+  }
+  }while(norm > tol);	// the iteration stops until the value of u get stable when computing steady state solution
+  }
   }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                    Iteration on vector u when explicit Euler method
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if(Euler==0)
   {
-    i = 2;
     if(state==0){
     /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
     ierr = MatScale(A,-1.0/lambda);CHKERRQ(ierr);		// A = -1.0/lambda * A
@@ -315,15 +323,20 @@ int main(int argc,char **args)
     its+=1;
     ierr = MatMultAdd(A,u,f,u_next);CHKERRQ(ierr);	// u_next = A * u + f
 
+    ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
+    ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the NORM_2 of u
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm   %g      iterations      %D\n",norm,its);CHKERRQ(ierr);
+
     ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
     /* write to HDF5 every 10 iterations */
+    i = 2; value[0] = 10.0*dt;
     if(its%10==0){
       ierr = VecView(u,viewer);CHKERRQ(ierr);
 
       ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
-      value[0] = its * dt;
-      ierr = VecSetValues(grid,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);	//Set the time grid[2]=its*dt
+      
+      ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);	//Set the time grid[2]=grid[2]+10*dt
       ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
       ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
       ierr = VecView(grid,viewer);CHKERRQ(ierr);
@@ -342,16 +355,18 @@ int main(int argc,char **args)
 
     ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
     ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the NORM_2 of u
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm	%g	iterations	%D\n",norm,its);CHKERRQ(ierr);
 
     ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
     /* write to HDF5 every 10 iterations */
+    i = 2; value[0] = 10.0*dt;
     if(its%10==0){
       ierr = VecView(u,viewer);CHKERRQ(ierr);
 
       ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
-      value[0] = its * dt;
-      ierr = VecSetValues(grid,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);    //Set the time grid[2]=its*dt
+
+      ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);    //Set the time grid[2]=grid[2]+10*dt
       ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
       ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
       ierr = VecView(grid,viewer);CHKERRQ(ierr);
@@ -366,31 +381,26 @@ int main(int argc,char **args)
 
   ierr = VecView(u,viewer);CHKERRQ(ierr);
 
+  ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+
+  ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);    //Set the time grid[2]=grid[2]+10*dt
+  ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+  ierr = VecView(grid,viewer);CHKERRQ(ierr);
+
+  ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Check solution and clean up
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   /*
-     Check the error
+     Check the error between the computed numerical solution
+		     and the analytical solution when t tends to inifity
   */
-  if(state==0){
-    /* When Computing transient state solution,
-       Manufactured solution method can be applied to investigate
-       how error is depended on the size of dt.
-       Compute the right-hand-side vector,Compute numerical solution */
-    ierr = MatMult(A,u_exact,u);CHKERRQ(ierr);		// u = A * u_exact
-    ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);		// solve A * u_next = u
+  ierr = VecAXPY(u_exact,-1.0,u);CHKERRQ(ierr);	// u_exact = u_exact - u
+  ierr = VecNorm(u_exact,NORM_INFINITY,&error);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"error: %g, dx: %g, dt: %g,iterations: %D\n",error,dx,dt,its);CHKERRQ(ierr);
 
-    ierr = VecAXPY(u_exact,-1.0,u_next);CHKERRQ(ierr);	// u_exact = u_exact - u_next
-    ierr = VecNorm(u_exact,NORM_INFINITY,&error);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"error: %g, dx: %g, dt: %g\n",error,dx,dt);CHKERRQ(ierr);
-  }else if(state==1){
-    /* When computing steady state solution,
-       directly compare the analytical solution with the numerical one when the solution is converged to tol.
-       It will show how error is depended on the size of dt */
-    ierr = VecAXPY(u_exact,-1.0,u_next);CHKERRQ(ierr);    // u_exact = u_exact - u_next
-    ierr = VecNorm(u_exact,NORM_INFINITY,&error);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"error: %g, dx: %g, dt: %g\n",error,dx,dt);CHKERRQ(ierr);
-  }
 
   /*
      Free work space.  All PETSc objects should be destroyed when they
@@ -400,7 +410,9 @@ int main(int argc,char **args)
   ierr = VecDestroy(&f);CHKERRQ(ierr); ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&grid);CHKERRQ(ierr);
   ierr = VecDestroy(&u_exact);CHKERRQ(ierr);
-  ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
+  if(Euler==1){
+    ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
+  }
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
 
   /*
