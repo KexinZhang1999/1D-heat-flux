@@ -211,7 +211,7 @@ int main(int argc,char **args)
     ierr = VecLoad(u,viewer);CHKERRQ(ierr);
     ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
     ierr = VecLoad(grid,viewer);CHKERRQ(ierr);
-    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
+    ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);    
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -278,7 +278,7 @@ int main(int argc,char **args)
 
     ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
   }
-  }while(its < its_max);
+  }while(its < its_max);	// the iteration stops until its > t / dt when computing transient state solution
   }else if(state==1){
   do{
   its+=1;
@@ -286,6 +286,7 @@ int main(int argc,char **args)
   ierr = VecAYPX(u,lambda,f);CHKERRQ(ierr);             // u = f + lambda * u
   ierr = KSPSolve(ksp,u,u_next);CHKERRQ(ierr);          // A * u_next = u
 
+  ierr = VecAXPBY(u,-1.0/lambda,1.0/lambda,f);CHKERRQ(ierr);	// return to the original u = 1/lambda * u - 1/lambda * f
   ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
   ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the NORM_2 of u
 
@@ -305,7 +306,7 @@ int main(int argc,char **args)
 
     ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
   }
-  }while(norm > tol);
+  }while(norm > tol);	// the iteration stops until the value of u get stable when computing steady state solution
   }
   }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -338,7 +339,7 @@ int main(int argc,char **args)
 
       ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
     } 
-    }while(its < its_max);
+    }while(its < its_max);	// the iteration stops until its > t / dt when computing transient state solution
     }else if(state==1){
     /* Compute u_next = -1/lambda * A * u + 1/lambda * f */
     ierr = MatScale(A,-1.0/lambda);CHKERRQ(ierr);               // A = -1.0/lambda * A
@@ -367,11 +368,22 @@ int main(int argc,char **args)
 
       ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
     }
-    }while(norm > tol);
+    }while(norm > tol);	// the iteration stops until the value of u get stable when computing steady state solution
     }
   }
 
+  /* - - - - - - Write the final solution to HDF5 file- - - - - - - - - - */
 
+  ierr = VecView(u,viewer);CHKERRQ(ierr);
+
+  ierr = PetscViewerHDF5PushGroup(viewer, "/grid");CHKERRQ(ierr);
+
+  ierr = VecSetValues(grid,1,&i,value,ADD_VALUES);CHKERRQ(ierr);    //Set the time grid[2]=grid[2]+10*dt
+  ierr = VecAssemblyBegin(grid);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(grid);CHKERRQ(ierr);
+  ierr = VecView(grid,viewer);CHKERRQ(ierr);
+
+  ierr = PetscViewerHDF5PopGroup(viewer);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Check solution and clean up

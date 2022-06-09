@@ -22,6 +22,8 @@ OPTIONS:
 
     Set the spatial resolution dx.(0.01 by default)
 
+    When the restart option is turned on, make sure the dx input is the same value as the one recorded in the Restart file.
+
   -dt		RealNumber
 
     Set the temporal resolution dt in seconds.(1.e-5 by default)
