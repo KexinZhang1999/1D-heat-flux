@@ -9,6 +9,6 @@ module purge
 module load intel/2018.4
 module load mpi/intel/2018.4
 
-mpirun ./solve.out -Euler 0 -dx 0.0005 -dt 1.0e-9 -t 1.0e-8 -state 0 -log_view>Ex_dx0.0005p2
+time mpirun ./solve.out -Euler 0 -dx 0.0005 -dt 1.0e-9 -t 1.0e-8 -state 0
 
-mpirun ./solve.out -Euler 1 -dx 0.0005 -dt 1.0e-9 -t 1.0e-8 -state 0 -log_view>Im_dx0.0005p2
+time mpirun ./solve.out -Euler 1 -dx 0.0005 -dt 1.0e-9 -t 1.0e-8 -state 0

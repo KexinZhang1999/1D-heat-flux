@@ -2,8 +2,8 @@
 #BSUB -J petsc-HeatEquation
 #BSUB -q ser
 #BSUB -n 20
-#BSUB -e log
-#BSUB -o log
+#BSUB -e loga
+#BSUB -o loga
 
 module purge
 module load intel/2018.4

@@ -1,0 +1,59 @@
+Sender: LSF System <lsfadmin@r01n20>
+Subject: Job 3829992: <petsc-HeatEquation> in cluster <sustchpc> Done
+
+Job <petsc-HeatEquation> was submitted from host <login02> by user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 21:38:55 2022.
+Job was executed on host(s) <1*r01n20>, in queue <ser>, as user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 21:38:55 2022.
+                            <5*r01n15>
+                            <14*r01n14>
+</work/ese-zhangkx> was used as the home directory.
+</work/ese-zhangkx/hpc/1D-heat-flux/trial/CheckError> was used as the working directory.
+Started at Thu Jun  9 21:38:55 2022.
+Terminated at Thu Jun  9 21:39:27 2022.
+Results reported at Thu Jun  9 21:39:27 2022.
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/bash
+#BSUB -J petsc-HeatEquation
+#BSUB -q ser
+#BSUB -n 20
+#BSUB -e logb
+#BSUB -o logb
+
+module purge
+module load intel/2018.4
+module load mpi/intel/2018.4
+
+mpirun ./solve.out -dt 1.e-6 -dx 1.0e-4 -state 0 -t 2.0e-6
+mpirun ./solve.out -dt 1.e-5 -dx 1.0e-4 -state 0 -t 2.0e-5
+mpirun ./solve.out -dt 1.e-4 -dx 1.0e-4 -state 0 -t 2.0e-4
+mpirun ./solve.out -dt 1.e-3 -dx 1.0e-4 -state 0 -t 2.0e-3
+mpirun ./solve.out -dt 1.e-2 -dx 1.0e-4 -state 0 -t 2.0e-2
+
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   370.00 sec.
+    Max Memory :                                 51 MB
+    Average Memory :                             40.40 MB
+    Total Requested Memory :                     -
+    Delta Memory :                               -
+    Max Swap :                                   -
+    Max Processes :                              7
+    Max Threads :                                9
+    Run time :                                   31 sec.
+    Turnaround time :                            32 sec.
+
+The output (if any) follows:
+
+error: 4.03795e-07, dx: 0.0001, dt: 1e-06
+error: 1.34135e-06, dx: 0.0001, dt: 1e-05
+error: 1.47405e-05, dx: 0.0001, dt: 0.0001
+error: 0.221869, dx: 0.0001, dt: 0.001
+error: 0.860746, dx: 0.0001, dt: 0.01

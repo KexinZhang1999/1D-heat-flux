@@ -171,15 +171,19 @@ int main(int argc,char **args)
   ierr = VecAssemblyEnd(u);CHKERRQ(ierr);
   
   /* Set the exact solution */
-  /* u_exact = sin(l*pi*x)/l/l/pi/pi - x * sin(l*pi)/l/l/pi/pi where x = (i+1)*dx */
-  for (i=rstart; i<rend;i++)
-  {
-    value[0] = sin(l*pi*dx*(i+1))/l/l/pi/pi - (i+1) * dx * sin(l*pi)/l/l/pi/pi;
-    ierr = VecSetValues(u_exact,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);
+  /* steady state u_exact = sin(l*pi*x)/l/l/pi/pi - x * sin(l*pi)/l/l/pi/pi where x = (i+1)*dx */
+  /* transient state u_exact = 1.0 */
+  if(state==1){
+    for (i=rstart; i<rend;i++)
+    {
+      value[0] = sin(l*pi*dx*(i+1))/l/l/pi/pi - (i+1) * dx * sin(l*pi)/l/l/pi/pi;
+      ierr = VecSetValues(u_exact,1,&i,value,INSERT_VALUES);CHKERRQ(ierr);
+    }
+    ierr = VecAssemblyBegin(u_exact);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(u_exact);CHKERRQ(ierr);
+  }else if(state==0){
+    ierr = VecSet(u_exact,1.0);CHKERRQ(ierr);
   }
-  ierr = VecAssemblyBegin(u_exact);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(u_exact);CHKERRQ(ierr);
-
   /* Assemble the vector f */
   for (i=rstart; i<rend;i++)
   {

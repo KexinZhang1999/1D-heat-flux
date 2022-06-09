@@ -9,8 +9,8 @@ module purge
 module load intel/2018.4
 module load mpi/intel/2018.4
 
-mpirun ./solve.out -Euler 1 -dx 0.001 -dt 1.0e-1 -t 1.0 -state 0 -pc_type jacobi -log_view>jacobi
+time mpirun ./solve.out -Euler 1 -dx 0.0001 -dt 1.0e-1 -t 1.0 -state 0 -pc_type jacobi -log_view>jacobi
 
-mpirun ./solve.out -Euler 1 -dx 0.001 -dt 1.0e-1 -t 1.0 -state 0 -pc_type asm -log_view>asm
+time mpirun ./solve.out -Euler 1 -dx 0.0001 -dt 1.0e-1 -t 1.0 -state 0 -pc_type asm -log_view>asm
 
-mpirun ./solve.out -Euler 1 -dx 0.001 -dt 1.0e-1 -t 1.0 -state 0 -ksp_type preonly -pc_type lu -pc_factor_mat_solver_type mumps -log_view>lu
+time mpirun ./solve.out -Euler 1 -dx 0.0001 -dt 1.0e-1 -t 1.0 -state 0 -ksp_type preonly -pc_type lu -pc_factor_mat_solver_type mumps -log_view>lu

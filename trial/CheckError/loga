@@ -1,0 +1,60 @@
+Sender: LSF System <lsfadmin@r01n07>
+Subject: Job 3829951: <petsc-HeatEquation> in cluster <sustchpc> Done
+
+Job <petsc-HeatEquation> was submitted from host <login02> by user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 21:26:09 2022.
+Job was executed on host(s) <1*r01n07>, in queue <ser>, as user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 21:26:09 2022.
+                            <1*r01n20>
+                            <2*r01n08>
+                            <8*r01n21>
+                            <8*r01n28>
+</work/ese-zhangkx> was used as the home directory.
+</work/ese-zhangkx/hpc/1D-heat-flux/trial/CheckError> was used as the working directory.
+Started at Thu Jun  9 21:26:09 2022.
+Terminated at Thu Jun  9 21:30:11 2022.
+Results reported at Thu Jun  9 21:30:11 2022.
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/bash
+#BSUB -J petsc-HeatEquation
+#BSUB -q ser
+#BSUB -n 20
+#BSUB -e loga
+#BSUB -o loga
+
+module purge
+module load intel/2018.4
+module load mpi/intel/2018.4
+
+mpirun ./solve.out -dt 0.01 -dx 1.0e-4 -state 1
+mpirun ./solve.out -dt 0.01 -dx 1.0e-3 -state 1
+mpirun ./solve.out -dt 0.01 -dx 1.0e-2 -state 1
+mpirun ./solve.out -dt 0.01 -dx 1.0e-1 -state 1
+
+
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   3661.00 sec.
+    Max Memory :                                 706 MB
+    Average Memory :                             376.84 MB
+    Total Requested Memory :                     -
+    Delta Memory :                               -
+    Max Swap :                                   -
+    Max Processes :                              32
+    Max Threads :                                54
+    Run time :                                   241 sec.
+    Turnaround time :                            242 sec.
+
+The output (if any) follows:
+
+error: 3.1831e-05, dx: 0.0001, dt: 0.01
+error: 0.000318306, dx: 0.001, dt: 0.01
+error: 0.0031797, dx: 0.01, dt: 0.01
+error: 0.0284787, dx: 0.1, dt: 0.01

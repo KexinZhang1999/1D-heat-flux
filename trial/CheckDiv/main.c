@@ -259,7 +259,7 @@ int main(int argc,char **args)
   ierr = VecAXPBY(u,-1.0/lambda,1.0/lambda,f);CHKERRQ(ierr);    // return to the original u = 1/lambda * u - 1/lambda * f
   ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
   ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the NORM_2 of u
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm   %g      iterations      %D\n",norm,its);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"%g,%D\n",norm,its);CHKERRQ(ierr);
 
   ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
@@ -288,7 +288,7 @@ int main(int argc,char **args)
   ierr = VecAXPBY(u,-1.0/lambda,1.0/lambda,f);CHKERRQ(ierr);	// return to the original u = 1/lambda * u - 1/lambda * f
   ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);		// u = u - u_next
   ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);		// compute the NORM_2 of u
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm   %g      iterations      %D\n",norm,its);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"%g,%D\n",norm,its);CHKERRQ(ierr);
 
   ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
@@ -325,7 +325,8 @@ int main(int argc,char **args)
 
     ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
     ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the NORM_2 of u
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm   %g      iterations      %D\n",norm,its);CHKERRQ(ierr);
+
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"%g,%D\n",norm,its);CHKERRQ(ierr);
 
     ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
@@ -355,7 +356,7 @@ int main(int argc,char **args)
 
     ierr = VecAXPY(u,-1.0,u_next);CHKERRQ(ierr);          // u = u - u_next
     ierr = VecNorm(u,NORM_2,&norm);CHKERRQ(ierr);         // compute the NORM_2 of u
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Norm	%g	iterations	%D\n",norm,its);CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"%g,%D\n",norm,its);CHKERRQ(ierr);
 
     ierr = VecCopy(u_next,u);CHKERRQ(ierr);               // copy u_next to u, go to next time step
 
@@ -399,7 +400,7 @@ int main(int argc,char **args)
   */
   ierr = VecAXPY(u_exact,-1.0,u);CHKERRQ(ierr);	// u_exact = u_exact - u
   ierr = VecNorm(u_exact,NORM_INFINITY,&error);CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"error: %g, dx: %g, dt: %g,iterations: %D\n",error,dx,dt,its);CHKERRQ(ierr);
+  //ierr = PetscPrintf(PETSC_COMM_WORLD,"error: %g, dx: %g, dt: %g,iterations: %D\n",error,dx,dt,its);CHKERRQ(ierr);
 
 
   /*

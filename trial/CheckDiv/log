@@ -1,15 +1,16 @@
-Sender: LSF System <lsfadmin@r01n20>
-Subject: Job 3828876: <petsc-HeatEquation> in cluster <sustchpc> Done
+Sender: LSF System <lsfadmin@r01n08>
+Subject: Job 3830126: <petsc-HeatEquation> in cluster <sustchpc> Done
 
-Job <petsc-HeatEquation> was submitted from host <login02> by user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 14:41:07 2022.
-Job was executed on host(s) <1*r01n20>, in queue <ser>, as user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 14:41:08 2022.
-                            <5*r01n28>
-                            <4*r01n03>
+Job <petsc-HeatEquation> was submitted from host <login02> by user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 22:27:52 2022.
+Job was executed on host(s) <1*r01n08>, in queue <ser>, as user <ese-zhangkx> in cluster <sustchpc> at Thu Jun  9 22:27:53 2022.
+                            <1*r01n07>
+                            <2*r01n20>
+                            <6*r01n15>
 </work/ese-zhangkx> was used as the home directory.
 </work/ese-zhangkx/hpc/1D-heat-flux/trial/CheckDiv> was used as the working directory.
-Started at Thu Jun  9 14:41:08 2022.
-Terminated at Thu Jun  9 14:44:58 2022.
-Results reported at Thu Jun  9 14:44:58 2022.
+Started at Thu Jun  9 22:27:53 2022.
+Terminated at Thu Jun  9 22:28:21 2022.
+Results reported at Thu Jun  9 22:28:21 2022.
 
 Your job looked like:
 
@@ -26,12 +27,12 @@ module purge
 module load intel/2018.4
 module load mpi/intel/2018.4
 
-mpirun ./solve.out -Euler 0 -t 1.0 -state 0 -dt 5.0e-5 > Ex5e-5.txt
-mpirun ./solve.out -Euler 0 -t 1.0 -state 0 -dt 4.0e-5 > Ex4e-5.txt
-mpirun ./solve.out -Euler 0 -t 1.0 -state 0 -dt 6.0e-5 > Ex6e-5.txt
+mpirun ./solve.out -Euler 0 -t 5.e-3 -state 0 -dt 5.0e-5 > Ex5e-5.txt
+mpirun ./solve.out -Euler 0 -t 4.e-3 -state 0 -dt 4.0e-5 > Ex4e-5.txt
+mpirun ./solve.out -Euler 0 -t 6.e-3 -state 0 -dt 6.0e-5 > Ex6e-5.txt
 
-mpirun ./solve.out -Euler 1 -t 1.0 -state 0 -dt 5.0e-5 > Im5e-5.txt
-mpirun ./solve.out -Euler 1 -t 1.0 -state 0 -dt 1.0e-3 > Im1e-3.txt
+mpirun ./solve.out -Euler 1 -t 5.e-3 -state 0 -dt 5.0e-5 > Im5e-5.txt
+mpirun ./solve.out -Euler 1 -t 5.e-1 -state 0 -dt 1.0e-3 > Im1e-3.txt
 mpirun ./solve.out -Euler 1 -t 1.0 -state 0 -dt 1.0e-1 > Im1e-1.txt
 
 ------------------------------------------------------------
@@ -40,16 +41,16 @@ Successfully completed.
 
 Resource usage summary:
 
-    CPU time :                                   895.00 sec.
-    Max Memory :                                 352 MB
-    Average Memory :                             117.50 MB
+    CPU time :                                   111.69 sec.
+    Max Memory :                                 43 MB
+    Average Memory :                             12.25 MB
     Total Requested Memory :                     -
     Delta Memory :                               -
     Max Swap :                                   -
-    Max Processes :                              20
-    Max Threads :                                32
-    Run time :                                   230 sec.
-    Turnaround time :                            231 sec.
+    Max Processes :                              7
+    Max Threads :                                9
+    Run time :                                   27 sec.
+    Turnaround time :                            29 sec.
 
 The output (if any) follows:
 
